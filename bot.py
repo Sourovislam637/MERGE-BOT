@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+from web_server import keep_alive
 
 load_dotenv(
     "config.env",
@@ -734,17 +735,13 @@ except KeyError:
 
 
 if __name__ == "__main__":
-    # with mergeApp:
-    #     bot:User = mergeApp.get_me()
-    #     bot_username = bot.username
-    
     # Check if userBot exists before using it
     if userBot is not None:
         try:
             with userBot:
                 userBot.send_message(
                     chat_id=int(LOGCHANNEL),
-                    text="Bot booted with Premium Account,\n\n  Thanks for using <a href='https://github.com/yashoswalyo/merge-bot'>this repo</a>",
+                    text="Bot booted with Premium Account...",
                     disable_web_page_preview=True,
                 )
                 user = userBot.get_me()
@@ -755,5 +752,8 @@ if __name__ == "__main__":
             pass
     else:
         Config.IS_PREMIUM = False
+
+    # ഈ വരിയാണ് പ്രധാനം! ഇത് Render-നെ പറ്റിക്കാൻ വേണ്ടിയാണ്
+    keep_alive() 
 
     mergeApp.run()
