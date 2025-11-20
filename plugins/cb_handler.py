@@ -25,14 +25,21 @@ from bot import (
 from plugins.mergeVideo import mergeNow
 from plugins.mergeVideoAudio import mergeAudio
 from plugins.mergeVideoSub import mergeSub
-from plugins.streams_extractor import streamsExtractor
+# Import streamsExtractor and cleanDB (Ensure streams_extractor.py is updated as per previous step)
+from plugins.streams_extractor import streamsExtractor, cleanDB
 from plugins.usettings import userSettings
+
+# We will add clean_video_streams in the next step (ffmpeg_helper.py), but we import it here for the button logic
+try:
+    from helpers.ffmpeg_helper import clean_video_streams
+except ImportError:
+    pass # It will be available after you update ffmpeg_helper.py
+from helpers.uploader import uploadFiles
 
 
 @Client.on_callback_query()
 async def callback_handler(c: Client, cb: CallbackQuery):
-    #     await cb_handler.cb_handler(c, cb)
-    # async def cb_handler(c: Client, cb: CallbackQuery):
+    
     if cb.data == "merge":
         await cb.message.edit(
             text="Where do you want to upload?",
@@ -405,16 +412,117 @@ async def callback_handler(c: Client, cb: CallbackQuery):
         )
         return
 
+    # ============================================================
+    # UPDATED EXTRACTOR & CLEANER LOGIC
+    # ============================================================
+
     elif cb.data.startswith('extract'):
         edata = cb.data.split('_')[1]
         media_mid = int(cb.data.split('_')[2])
         try:
             if edata == 'audio':
-                LOGGER.info('audio')
                 await streamsExtractor(c, cb, media_mid, exAudios=True)
             elif edata == 'subtitle':
                 await streamsExtractor(c, cb, media_mid, exSubs=True)
             elif edata == 'all':
+                # FIX: Call with both True
                 await streamsExtractor(c, cb, media_mid, exAudios=True, exSubs=True)
+            elif edata == 'clean':
+                # FEATURE: Stream Cleaner Mode
+                await streamsExtractor(c, cb, media_mid, mode="clean")
         except Exception as e:
             LOGGER.error(e)
+    
+    # ============================================================
+    # STREAM CLEANER CHECKBOX TOGGLE
+    # ============================================================
+    
+    elif cb.data.startswith("clean_toggle_"):
+        user_id = cb.from_user.id
+        idx = int(cb.data.split("_")[-1])
+        
+        if user_id in cleanDB:
+            # Toggle Selection
+            current_status = cleanDB[user_id]['streams'][idx]['selected']
+            cleanDB[user_id]['streams'][idx]['selected'] = not current_status
+            
+            # Refresh Buttons
+            await show_clean_buttons(cb.message, user_id)
+        else:
+            await cb.answer("Session Expired or Invalid Request", show_alert=True)
+
+    elif cb.data == "clean_process":
+        user_id = cb.from_user.id
+        
+        if user_id not in cleanDB:
+            await cb.answer("Session Expired", show_alert=True)
+            return
+            
+        data = cleanDB[user_id]
+        input_file = data['path']
+        
+        # Collect indexes that are True (Selected)
+        keep_indices = [idx for idx, info in data['streams'].items() if info['selected']]
+        
+        # Validation: At least one audio must be selected? 
+        # If user unchecks ALL, we might produce a video with no audio. That is also a valid use case.
+        # But let's show a warning just in case.
+        if not keep_indices:
+             await cb.answer("⚠️ Warning: No Audio Selected! Video will be muted.", show_alert=True)
+        
+        await cb.message.edit("🧹 **Cleaning Video...**\nRemoving unwanted audio streams...")
+        
+        try:
+            # Calling the function we will add in ffmpeg_helper.py
+            from helpers.ffmpeg_helper import clean_video_streams
+            cleaned_path = await clean_video_streams(input_file, keep_indices, user_id)
+            
+            if cleaned_path:
+                await cb.message.edit("📤 **Uploading Cleaned Video...**")
+                await uploadFiles(c, cb, cleaned_path, 1, 1)
+                
+                await cb.message.delete()
+                await delete_all(root=f"downloads/{str(user_id)}")
+                del cleanDB[user_id]
+            else:
+                await cb.message.edit("❌ **Failed to clean video.**\nCheck logs.")
+        except Exception as e:
+             LOGGER.error(f"Clean Process Error: {e}")
+             await cb.message.edit("❌ Error during processing.")
+
+# ==================================================================
+# HELPER FUNCTION FOR CLEANER BUTTONS
+# ==================================================================
+async def show_clean_buttons(message, user_id):
+    data = cleanDB.get(user_id)
+    if not data:
+        return
+    
+    streams = data['streams']
+    buttons = []
+    
+    # Create Checkbox Buttons
+    for idx, info in streams.items():
+        status = "✅" if info['selected'] else "❌"
+        lang_code = info.get('lang', 'unk').upper()
+        title = info.get('title', '')
+        label = f"{status} {lang_code} {title}"
+        
+        # Callback: clean_toggle_{index}
+        buttons.append([InlineKeyboardButton(label, callback_data=f"clean_toggle_{idx}")])
+    
+    # Control Buttons
+    buttons.append([
+        InlineKeyboardButton("🧹 START CLEANING", callback_data="clean_process")
+    ])
+    buttons.append([
+        InlineKeyboardButton("⛔ Cancel", callback_data="cancel")
+    ])
+    
+    await message.edit(
+        text="**🔉 Audio Stream Remover**\n\n"
+             "👇 **Tick (✅)** the audios you want to **KEEP**.\n"
+             "👇 **Untick (❌)** the audios you want to **REMOVE**.\n\n"
+             "_(Subtitles and Video are kept automatically)_",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
