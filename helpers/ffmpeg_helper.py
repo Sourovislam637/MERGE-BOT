@@ -14,11 +14,6 @@ from helpers.utils import get_path_size
 async def MergeVideo(input_file: str, user_id: int, message: Message, format_: str):
     """
     This is for Merging Videos Together!
-    :param `input_file`: input.txt file's location.
-    :param `user_id`: Pass user_id as integer.
-    :param `message`: Pass Editable Message for Showing FFmpeg Progress.
-    :param `format_`: Pass File Extension.
-    :return: This will return Merged Video File Path
     """
     output_vid = f"downloads/{str(user_id)}/[@yashoswalyo].{format_.lower()}"
     file_generator_command = [
@@ -63,13 +58,6 @@ async def MergeVideo(input_file: str, user_id: int, message: Message, format_: s
 async def MergeSub(filePath: str, subPath: str, user_id):
     """
     This is for Merging Video + Subtitle Together.
-
-    Parameters:
-    - `filePath`: Path to Video file.
-    - `subPath`: Path to subtitile file.
-    - `user_id`: To get parent directory.
-
-    returns: Merged Video File Path
     """
     LOGGER.info("Generating mux command")
     muxcmd = []
@@ -114,15 +102,7 @@ async def MergeSub(filePath: str, subPath: str, user_id):
 
 def MergeSubNew(filePath: str, subPath: str, user_id, file_list):
     """
-    This method is for Merging Video + Subtitle(s) Together.
-
-    Parameters:
-    - `filePath`: Path to Video file.
-    - `subPath`: Path to subtitile file.
-    - `user_id`: To get parent directory.
-    - `file_list`: List of all input files
-
-    returns: Merged Video File Path
+    Merging Video + Subtitle(s) Together.
     """
     LOGGER.info("Generating mux command")
     muxcmd = []
@@ -208,7 +188,6 @@ def MergeAudio(videoPath: str, files_list: list, user_id):
 
 
 async def cult_small_video(video_file, output_directory, start_time, end_time, format_):
-    # https://stackoverflow.com/a/13891070/4723940
     out_put_file_name = (
         output_directory + str(round(time.time())) + "." + format_.lower()
     )
@@ -243,35 +222,9 @@ async def cult_small_video(video_file, output_directory, start_time, end_time, f
 
 
 async def take_screen_shot(video_file, output_directory, ttl):
-    """
-    This functions generates custom_thumbnail / Screenshot.
-
-    Parameters:
-
-    - `video_file`: Path to video file.
-    - `output_directory`: Path where to save thumbnail
-    - `ttl`: Timestamp to generate ss
-
-    returns: This will return path of screenshot
-    """
-    # https://stackoverflow.com/a/13891070/4723940
     out_put_file_name = os.path.join(output_directory, str(time.time()) + ".jpg")
     if video_file.upper().endswith(
-        (
-            "MKV",
-            "MP4",
-            "WEBM",
-            "AVI",
-            "MOV",
-            "OGG",
-            "WMV",
-            "M4V",
-            "TS",
-            "MPG",
-            "MTS",
-            "M2TS",
-            "3GP",
-        )
+        ("MKV","MP4","WEBM","AVI","MOV","OGG","WMV","M4V","TS","MPG","MTS","M2TS","3GP")
     ):
         file_genertor_command = [
             "ffmpeg",
@@ -283,18 +236,14 @@ async def take_screen_shot(video_file, output_directory, ttl):
             "1",
             out_put_file_name,
         ]
-        # width = "90"
         process = await asyncio.create_subprocess_exec(
             *file_genertor_command,
-            # stdout must a pipe to be accessible as process.stdout
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        # Wait for the subprocess to finish
         stdout, stderr = await process.communicate()
         e_response = stderr.decode().strip()
         t_response = stdout.decode().strip()
-    #
     if os.path.exists(out_put_file_name):
         return out_put_file_name
     else:
@@ -302,17 +251,12 @@ async def take_screen_shot(video_file, output_directory, ttl):
 
 
 async def extractAudios(path_to_file, user_id):
-    """
-    docs
-    """
     dir_name = os.path.dirname(os.path.dirname(path_to_file))
     if not os.path.exists(path_to_file):
         return None
     if not os.path.exists(dir_name + "/extract"):
         os.makedirs(dir_name + "/extract")
     videoStreamsData = ffmpeg.probe(path_to_file)
-    # with open("data.json",'w') as f:
-    #     f.write(json.dumps(videoStreamsData))
     extract_dir = dir_name + "/extract"
     audios = []
     for stream in videoStreamsData.get("streams"):
@@ -359,17 +303,12 @@ async def extractAudios(path_to_file, user_id):
 
 
 async def extractSubtitles(path_to_file, user_id):
-    """
-    docs
-    """
     dir_name = os.path.dirname(os.path.dirname(path_to_file))
     if not os.path.exists(path_to_file):
         return None
     if not os.path.exists(dir_name + "/extract"):
         os.makedirs(dir_name + "/extract")
     videoStreamsData = ffmpeg.probe(path_to_file)
-    # with open("data.json",'w') as f:
-    #     f.write(json.dumps(videoStreamsData))
     extract_dir = dir_name + "/extract"
     subtitles = []
     for stream in videoStreamsData.get("streams"):
@@ -396,7 +335,7 @@ async def extractSubtitles(path_to_file, user_id):
                     + subtitle["tags"]["title"]
                     + "."
                     + subtitle["codec_type"]
-                    + ".mka"
+                    + ".srt"
                 )
                 output_file = output_file.replace(" ", ".")
             except:
@@ -407,11 +346,11 @@ async def extractSubtitles(path_to_file, user_id):
                         + subtitle["tags"]["language"]
                         + "."
                         + subtitle["codec_type"]
-                        + ".mka"
+                        + ".srt"
                     )
                 except:
                     output_file = (
-                        str(subtitle["index"]) + "." + subtitle["codec_type"] + ".mka"
+                        str(subtitle["index"]) + "." + subtitle["codec_type"] + ".srt"
                     )
             extractcmd.append("-c")
             extractcmd.append("copy")
@@ -424,4 +363,79 @@ async def extractSubtitles(path_to_file, user_id):
         return extract_dir
     else:
         LOGGER.warning(f"{extract_dir} is empty")
+        return None
+
+# ==============================================================================
+# NEW FUNCTIONS FOR STREAM CLEANING (AUDIO REMOVER)
+# ==============================================================================
+
+async def get_audio_streams(input_file):
+    """
+    Returns a list of audio streams with index and language.
+    Used for generating checkboxes.
+    """
+    try:
+        probe = ffmpeg.probe(input_file)
+        audio_streams = []
+        for stream in probe['streams']:
+            if stream['codec_type'] == 'audio':
+                index = stream['index']
+                tags = stream.get('tags', {})
+                lang = tags.get('language', 'unk')
+                title = tags.get('title', str(index))
+                audio_streams.append({'index': index, 'lang': lang, 'title': title})
+        return audio_streams
+    except Exception as e:
+        LOGGER.error(f"Probe Error: {e}")
+        return None
+
+async def clean_video_streams(input_file, keep_indices, user_id):
+    """
+    Removes unselected audio streams.
+    Keeps:
+    1. Original Video Track (0:v)
+    2. ALL Subtitles (0:s?) -> This ensures subtitles are NEVER removed.
+    3. Only Selected Audio Tracks (from keep_indices)
+    """
+    output_file = f"downloads/{str(user_id)}/[Cleaned]_video.mkv"
+    
+    # Start building FFmpeg command logic
+    # We use asyncio subprocess instead of ffmpeg-python wrapper for better control over mapping logic
+    
+    command = ['ffmpeg', '-hide_banner', '-i', input_file]
+    
+    # 1. MAP VIDEO (Always keep the first video track)
+    command.extend(['-map', '0:v'])
+    
+    # 2. MAP SELECTED AUDIOS (Loop through the indexes user ticked)
+    if keep_indices:
+        for idx in keep_indices:
+            command.extend(['-map', f"0:{idx}"])
+    else:
+        # If user deselected ALL audios, we map no audio. 
+        # Video will be muted. This is valid behavior.
+        pass
+            
+    # 3. MAP ALL SUBTITLES (Critical: Never remove subtitles)
+    # "0:s?" means map all subtitle streams from input 0 if they exist.
+    command.extend(['-map', '0:s?'])
+    
+    # 4. COPY CODEC (No re-encoding, very fast)
+    command.extend(['-c', 'copy'])
+    
+    command.append(output_file)
+    
+    LOGGER.info(f"Running Clean Command: {command}")
+    
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    
+    if os.path.exists(output_file):
+        return output_file
+    else:
+        LOGGER.error(f"Clean Error: {stderr.decode()}")
         return None
