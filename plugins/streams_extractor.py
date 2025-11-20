@@ -2,144 +2,214 @@ import time
 import os
 import asyncio
 import shutil
-from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+
+from pyrogram import Client
+from pyrogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
+
 from __init__ import LOGGER, queueDB
 from bot import delete_all, gDict
 from helpers.display_progress import Progress
-from helpers.ffmpeg_helper import extractAudios, extractSubtitles
+from helpers.ffmpeg_helper import (
+    extractAudios,
+    extractSubtitles,
+    extract_video_with_subs,
+    get_audio_streams,
+    clean_video_streams,
+)
 from helpers.uploader import uploadFiles
 
-# Database to store user selection for cleaning (Will be used in next step)
+# Database for cleaner (per user)
+# cleanDB[user_id] = {
+#     "path": "<downloaded_file_path>",
+#     "streams": {
+#         index: {"lang": "...", "title": "...", "selected": True/False}
+#     }
+# }
 cleanDB = {}
 
-async def streamsExtractor(c: Client, cb: CallbackQuery, media_mid, exAudios=False, exSubs=False, mode="extract"):
+
+async def streamsExtractor(
+    c: Client,
+    cb: CallbackQuery,
+    media_mid,
+    mode: str = "extract",
+    exType: str | None = None,
+):
     """
-    Handles extracting streams (Audio/Subs) and preparing for Cleaning mode.
+    Main entry for stream extraction and cleaner.
+
+    :param c: Pyrogram client
+    :param cb: callback query
+    :param media_mid: message id of the media to process
+    :param mode: 'extract' or 'clean'
+    :param exType: when mode == 'extract':
+                   'audio' | 'subtitle' | 'video' | 'all'
     """
     user_id = cb.from_user.id
-    
-    # Create directory for user if not exists
-    if not os.path.exists(f"downloads/{str(user_id)}/"):
-        os.makedirs(f"downloads/{str(user_id)}/")
-    
-    # Initial Status Message
-    _hold = await cb.message.edit(text="🚀 **Initializing Process...**")
-    
-    # Get the message containing the media
+
+    # Ensure download directory
+    base_dir = f"downloads/{str(user_id)}/"
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+
+    hold_msg = await cb.message.edit(text="Initializing...")
+
+    # -------------------------------------------------------------------------
+    # Fetch original message and media
+    # -------------------------------------------------------------------------
     try:
         omess: Message = await c.get_messages(chat_id=user_id, message_ids=media_mid)
         media = omess.video or omess.document
         if not media:
-            await _hold.edit("❌ **File not found!**\nPlease send the file again.")
+            await hold_msg.edit("File not found.")
             return
-        LOGGER.info(f'Starting Download: {media.file_name}')
     except Exception as e:
-        LOGGER.error(f"Download failed: Unable to find media {e}")
-        await _hold.edit("❌ **Error:** Unable to find media.")
+        LOGGER.error(f"Error while fetching media: {e}")
+        await hold_msg.edit("Error: unable to fetch media.")
         return
 
-    # Download the Video/File
+    # -------------------------------------------------------------------------
+    # Download media once (used by both extract and cleaner)
+    # -------------------------------------------------------------------------
     file_dl_path = None
     try:
         c_time = time.time()
         prog = Progress(user_id, c, cb.message)
-        progress_msg = f"📥 **Downloading:** `{media.file_name}`"
-        
         file_dl_path = await c.download_media(
             message=media,
-            file_name=f"downloads/{str(user_id)}/{str(omess.id)}/vid.mkv", 
+            file_name=f"{base_dir}{str(omess.id)}/vid.mkv",
             progress=prog.progress_for_pyrogram,
-            progress_args=(progress_msg, c_time),
+            progress_args=(f"Downloading: `{media.file_name}`", c_time),
         )
-        
         if not os.path.exists(file_dl_path):
-            await _hold.edit("❌ **Download Failed!**")
+            await hold_msg.edit("Download failed.")
             return
-            
-        await _hold.edit(f"✅ **Downloaded Successfully:** `{media.file_name}`")
-        await asyncio.sleep(2)
-        
-    except Exception as downloadErr:
-        LOGGER.error(f"Failed to download Error: {downloadErr}")
-        await _hold.edit("❌ **Download Error!**\nProcess Cancelled.")
-        await asyncio.sleep(4)
+        await hold_msg.edit("Download complete. Processing...")
+    except Exception as e:
+        LOGGER.error(f"Download error: {e}")
+        await hold_msg.edit("Error: download failed.")
         return
 
-    # ==================================================================
-    # MODE 1: EXTRACTOR (Audio / Subtitle / All)
-    # ==================================================================
+    # =========================================================================
+    # MODE: EXTRACT (Audio / Subtitle / Video(+Subs) / ALL)
+    # =========================================================================
     if mode == "extract":
-        await _hold.edit("⚙️ **Processing Streams...**")
-        
-        extract_dir = None
-        
-        # Logic for Extract ALL (Audio + Subs)
-        if exAudios and exSubs:
-            await _hold.edit("🔄 **Extracting ALL Streams (Audios & Subtitles)...**")
-            # We run both. They usually output to the same 'extract' folder.
-            # We capture the directory path from one of them.
-            ad = await extractAudios(file_dl_path, user_id)
-            sd = await extractSubtitles(file_dl_path, user_id)
-            # If any extraction happened, set the directory
-            extract_dir = ad if ad else sd
-            
-        # Logic for Audio Only
-        elif exAudios:
-            await _hold.edit("🔊 **Extracting Audios...**")
-            extract_dir = await extractAudios(file_dl_path, user_id)
-            
-        # Logic for Subtitle Only
-        elif exSubs:
-            await _hold.edit("📜 **Extracting Subtitles...**")
-            extract_dir = await extractSubtitles(file_dl_path, user_id)
+        extracted_files: list[str] = []
 
-        # Upload Logic
-        if extract_dir and os.path.exists(extract_dir):
-            # Count files
-            files_to_upload = []
-            for dirpath, _, filenames in os.walk(extract_dir):
-                for f in filenames:
-                    files_to_upload.append(os.path.join(dirpath, f))
-            
-            total_files = len(files_to_upload)
-            
-            if total_files > 0:
-                await _hold.edit(f"📤 **Uploading {total_files} Extracted Files...**")
-                
-                for i, up_path in enumerate(files_to_upload):
-                    await uploadFiles(
-                        c=c,
-                        cb=cb,
-                        up_path=up_path,
-                        n=i+1,
-                        all=total_files,
-                    )
-                    LOGGER.info(f"Uploaded: {up_path}")
-                
-                await _hold.delete()
-                await cb.message.reply_text(
-                    f"✅ **Extraction Completed!**\n📁 Files: {total_files}\n🎥 Source: `{media.file_name}`", 
-                    quote=True
-                )
-            else:
-                await _hold.edit("⚠️ **No Streams Found!**\n(The file might not have any tracks of that type).")
+        # 1. Extract audios
+        if exType in ["audio", "all"]:
+            await hold_msg.edit("Extracting audio streams...")
+            a_dir = await extractAudios(file_dl_path, user_id)
+            if a_dir:
+                for root, _, files in os.walk(a_dir):
+                    for f in files:
+                        extracted_files.append(os.path.join(root, f))
+
+        # 2. Extract subtitles
+        if exType in ["subtitle", "all"]:
+            await hold_msg.edit("Extracting subtitle streams...")
+            s_dir = await extractSubtitles(file_dl_path, user_id)
+            if s_dir:
+                for root, _, files in os.walk(s_dir):
+                    for f in files:
+                        extracted_files.append(os.path.join(root, f))
+
+        # 3. Extract Video (+Subs, no audio)
+        if exType in ["video", "all"]:
+            await hold_msg.edit("Preparing video with subtitles (no audio)...")
+            v_path = await extract_video_with_subs(file_dl_path, user_id)
+            if v_path:
+                extracted_files.append(v_path)
+
+        # Upload all extracted files
+        if extracted_files:
+            total = len(extracted_files)
+            await hold_msg.edit(f"Uploading {total} file(s)...")
+            for i, f_path in enumerate(extracted_files, start=1):
+                await uploadFiles(c, cb, f_path, i, total)
+
+            try:
+                await hold_msg.delete()
+            except Exception:
+                pass
+
+            await cb.message.reply_text(
+                f"Task completed.\nMode: {exType.upper() if exType else 'UNKNOWN'}",
+                quote=True,
+            )
         else:
-            await _hold.edit("❌ **Extraction Failed!**\nCould not extract any streams.")
+            await hold_msg.edit("No streams extracted.")
 
-    # ==================================================================
-    # MODE 2: CLEANER (Structure ready for next step)
-    # ==================================================================
+        # Cleanup for extract mode
+        await delete_all(root=f"downloads/{str(user_id)}")
+        queueDB.update({user_id: {"videos": [], "subtitles": [], "audios": []}})
+        return
+
+    # =========================================================================
+    # MODE: CLEANER (Build audio checklist and store in cleanDB)
+    # =========================================================================
     elif mode == "clean":
-        # We will implement the logic here in the next steps as you requested.
-        # This placeholder ensures the code doesn't break if called.
-        await _hold.edit("🚧 **Cleaner Mode Loading...** (Next Step)")
-        pass
+        # Probe audio streams
+        audio_streams = await get_audio_streams(file_dl_path)
+        if not audio_streams:
+            await hold_msg.edit("No audio streams found for cleaning.")
+            # Cleanup since cleaner will not proceed
+            await delete_all(root=f"downloads/{str(user_id)}")
+            return
 
-    # Cleanup: Delete downloaded files to save space
-    await delete_all(root=f"downloads/{str(user_id)}")
-    
-    # Reset Queue DB if needed
-    queueDB.update({user_id: {"videos": [], "subtitles": [], "audios": []}})
-    
-    return
+        # Build cleanDB entry
+        streams_map = {}
+        for s in audio_streams:
+            idx = s["index"]
+            streams_map[idx] = {
+                "lang": s["lang"],
+                "title": s["title"],
+                "selected": True,  # default: keep all
+            }
+
+        cleanDB[user_id] = {
+            "path": file_dl_path,
+            "streams": streams_map,
+        }
+
+        # Build inline keyboard with toggles
+        keyboard = []
+        for idx, info in streams_map.items():
+            lang = info["lang"].upper()
+            title = info["title"]
+            mark = "✅" if info["selected"] else "❌"
+            btn_text = f"{mark} [{lang}] {title}"
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        btn_text,
+                        callback_data=f"clean_toggle_{idx}",
+                    )
+                ]
+            )
+
+        # Process / cancel row
+        keyboard.append(
+            [
+                InlineKeyboardButton("Process", callback_data="clean_process"),
+                InlineKeyboardButton("Cancel", callback_data="cancel"),
+            ]
+        )
+
+        await hold_msg.edit(
+            text=(
+                "Stream cleaner mode.\n\n"
+                "Tap on the buttons below to enable or disable audio tracks.\n"
+                "Video and subtitles will always be kept.\n\n"
+                "When you are done, press Process."
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+        # Note: cleanup for cleaner mode is done in clean_process (cb_handler)
+        return
