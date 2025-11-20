@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+from web_server import keep_alive
 
 load_dotenv(
     "config.env",
@@ -12,7 +13,7 @@ import time
 import psutil
 import pyromod
 from PIL import Image
-from pyrogram import Client, filters,enums
+from pyrogram import Client, filters, enums
 from pyrogram.errors import (
     FloodWait,
     InputUserDeactivated,
@@ -71,11 +72,11 @@ mergeApp = MergeBot(
     bot_token=Config.BOT_TOKEN,
     workers=300,
     plugins=dict(root="plugins"),
-    app_version="5.0+yash-mergebot",
+    app_version="5.0+mallupuls-mergebot",
 )
 
 
-if os.path.exists("downloads") == False:
+if os.path.exists("downloads") is False:
     os.makedirs("downloads")
 
 
@@ -89,26 +90,38 @@ async def sendLogFile(c: Client, m: Message):
 async def loginHandler(c: Client, m: Message):
     user = UserSettings(m.from_user.id, m.from_user.first_name)
     if user.banned:
-        await m.reply_text(text=f"**Banned User Detected!**\n  🛡️ Unfortunately you can't use me\n\nContact: 🈲 @{Config.OWNER_USERNAME}", quote=True)
+        await m.reply_text(
+            text=f"**Banned User Detected!**\nYou cannot use this bot.\n\nContact: @{Config.OWNER_USERNAME}",
+            quote=True,
+        )
         return
     if user.user_id == int(Config.OWNER):
         user.allowed = True
     if user.allowed:
-        await m.reply_text(text=f"**Dont Spam**\n  ⚡ You can use me!!", quote=True)
+        await m.reply_text(
+            text="**Do not spam.**\nYou can use the bot now.",
+            quote=True,
+        )
     else:
         try:
             passwd = m.text.split(" ", 1)[1]
-        except:
-            await m.reply_text("**Command:**\n  `/login <password>`\n\n**Usage:**\n  `password`: Get the password from owner",quote=True,parse_mode=enums.parse_mode.ParseMode.MARKDOWN)
+        except Exception:
+            await m.reply_text(
+                "**Command:**\n  `/login <password>`\n\n**Usage:**\n  `password`: Get the password from owner",
+                quote=True,
+                parse_mode=enums.ParseMode.MARKDOWN,
+            )
+            return
         passwd = passwd.strip()
         if passwd == Config.PASSWORD:
             user.allowed = True
             await m.reply_text(
-                text=f"**Login passed ✅,**\n  ⚡ Now you can use me!!", quote=True
+                text="**Login passed ✅**\nYou can use the bot now.",
+                quote=True,
             )
         else:
             await m.reply_text(
-                text=f"**Login failed ❌,**\n  🛡️ Unfortunately you can't use me\n\nContact: 🈲 @{Config.OWNER_USERNAME}",
+                text=f"**Login failed ❌**\nYou cannot use this bot.\n\nContact: @{Config.OWNER_USERNAME}",
                 quote=True,
             )
     user.set()
@@ -129,7 +142,7 @@ async def stats_handler(c: Client, m: Message):
     memory = psutil.virtual_memory().percent
     disk = psutil.disk_usage("/").percent
     stats = (
-        f"<b>╭「 💠 BOT STATISTICS 」</b>\n"
+        f"<b>╭「 BOT STATISTICS 」</b>\n"
         f"<b>│</b>\n"
         f"<b>├⏳ Bot Uptime : {currentTime}</b>\n"
         f"<b>├💾 Total Disk Space : {total}</b>\n"
@@ -152,16 +165,18 @@ async def stats_handler(c: Client, m: Message):
 async def broadcast_handler(c: Client, m: Message):
     msg = m.reply_to_message
     userList = await database.broadcast()
-    len = userList.collection.count_documents({})
-    status = await m.reply_text(text=BROADCAST_MSG.format(str(len), "0"), quote=True)
+    len_users = userList.collection.count_documents({})
+    status = await m.reply_text(
+        text=BROADCAST_MSG.format(str(len_users), "0"), quote=True
+    )
     success = 0
-    for i in range(len):
+    for i in range(len_users):
         try:
             uid = userList[i]["_id"]
             if uid != int(Config.OWNER):
                 await msg.copy(chat_id=uid)
             success = i + 1
-            await status.edit_text(text=BROADCAST_MSG.format(len, success))
+            await status.edit_text(text=BROADCAST_MSG.format(len_users, success))
             LOGGER.info(f"Message sent to {userList[i]['name']} ")
         except FloodWait as e:
             await asyncio.sleep(e.x)
@@ -184,8 +199,8 @@ async def broadcast_handler(c: Client, m: Message):
             LOGGER.warning(f"{err}\n")
         await asyncio.sleep(3)
     await status.edit_text(
-        text=BROADCAST_MSG.format(len, success)
-        + f"**Failed: {str(len-success)}**\n\n__🤓 Broadcast completed sucessfully__",
+        text=BROADCAST_MSG.format(len_users, success)
+        + f"**Failed: {str(len_users-success)}**\n\n__Broadcast completed successfully.__",
     )
 
 
@@ -195,16 +210,25 @@ async def start_handler(c: Client, m: Message):
 
     if m.from_user.id != int(Config.OWNER):
         if user.allowed is False:
-            res = await m.reply_text(
-                text=f"Hi **{m.from_user.first_name}**\n\n 🛡️ Unfortunately you can't use me\n\n**Contact: 🈲 @{Config.OWNER_USERNAME}** ",
+            await m.reply_text(
+                text=(
+                    f"Hi **{m.from_user.first_name}**\n\n"
+                    f"You are not allowed to use this bot.\n\n"
+                    f"Contact: @{Config.OWNER_USERNAME}"
+                ),
                 quote=True,
             )
             return
     else:
         user.allowed = True
         user.set()
-    res = await m.reply_text(
-        text=f"Hi **{m.from_user.first_name}**\n\n ⚡ I am a file/video merger bot\n\n😎 I can merge Telegram files!, And upload it to telegram\n\n**Owner: 🈲 @{Config.OWNER_USERNAME}** ",
+    await m.reply_text(
+        text=(
+            f"Hi **{m.from_user.first_name}**\n\n"
+            f"I am a file and video merger bot.\n\n"
+            f"I can merge Telegram files and upload them.\n\n"
+            f"Owner: @{Config.OWNER_USERNAME}"
+        ),
         quote=True,
     )
     del user
@@ -218,64 +242,65 @@ async def files_handler(c: Client, m: Message):
     user = UserSettings(user_id, m.from_user.first_name)
     if user_id != int(Config.OWNER):
         if user.allowed is False:
-            res = await m.reply_text(
-                text=f"Hi **{m.from_user.first_name}**\n\n 🛡️ Unfortunately you can't use me\n\n**Contact: 🈲 @{Config.OWNER_USERNAME}** ",
+            await m.reply_text(
+                text=(
+                    f"Hi **{m.from_user.first_name}**\n\n"
+                    f"You are not allowed to use this bot.\n\n"
+                    f"Contact: @{Config.OWNER_USERNAME}"
+                ),
                 quote=True,
             )
             return
-    if user.merge_mode == 4: # extract_mode
+    if user.merge_mode == 4:  # extract mode
         return
     input_ = f"downloads/{str(user_id)}/input.txt"
     if os.path.exists(input_):
-        await m.reply_text("Sorry Bro,\nAlready One process in Progress!\nDon't Spam.")
+        await m.reply_text(
+            "One process is already in progress. Please wait until it finishes."
+        )
         return
     media = m.video or m.document or m.audio
     if media.file_name is None:
-        await m.reply_text("File Not Found")
+        await m.reply_text("File name not found.")
         return
     currentFileNameExt = media.file_name.rsplit(sep=".")[-1].lower()
     if currentFileNameExt in "conf":
         await m.reply_text(
-            text="**💾 Config file found, Do you want to save it?**",
+            text="Config file found. Do you want to save it?",
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
-                        InlineKeyboardButton("✅ Yes", callback_data=f"rclone_save"),
-                        InlineKeyboardButton("❌ No", callback_data="rclone_discard"),
+                        InlineKeyboardButton("Yes", callback_data="rclone_save"),
+                        InlineKeyboardButton("No", callback_data="rclone_discard"),
                     ]
                 ]
             ),
             quote=True,
         )
         return
-    # if MERGE_MODE.get(user_id) is None:
-    #     userMergeMode = database.getUserMergeSettings(user_id)
-    #     if userMergeMode is not None:
-    #         MERGE_MODE[user_id] = userMergeMode
-    #     else:
-    #         database.setUserMergeMode(uid=user_id, mode=1)
-    #         MERGE_MODE[user_id] = 1
 
     if user.merge_mode == 1:
 
         if queueDB.get(user_id, None) is None:
             formatDB.update({user_id: currentFileNameExt})
-        if formatDB.get(
-            user_id, None
-        ) is not None and currentFileNameExt != formatDB.get(user_id):
+        if (
+            formatDB.get(user_id, None) is not None
+            and currentFileNameExt != formatDB.get(user_id)
+        ):
             await m.reply_text(
-                f"First you sent a {formatDB.get(user_id).upper()} file so now send only that type of file.",
+                f"You first sent a {formatDB.get(user_id).upper()} file. "
+                f"Now send only that type of file.",
                 quote=True,
             )
             return
         if currentFileNameExt not in VIDEO_EXTENSIONS:
             await m.reply_text(
-                "This Video Format not Allowed!\nOnly send MP4 or MKV or WEBM.",
+                "This video format is not allowed. Only send MP4, MKV or WEBM.",
                 quote=True,
             )
             return
-        editable = await m.reply_text("Please Wait ...", quote=True)
-        MessageText = "Okay,\nNow Send Me Next Video or Press **Merge Now** Button!"
+        editable = await m.reply_text("Please wait...", quote=True)
+        MessageText = "Now send the next video or press Merge Now."
 
         if queueDB.get(user_id, None) is None:
             queueDB.update({user_id: {"videos": [], "subtitles": [], "audios": []}})
@@ -286,13 +311,9 @@ async def files_handler(c: Client, m: Message):
             queueDB.get(user_id)["videos"].append(m.id)
             queueDB.get(m.from_user.id)["subtitles"].append(None)
 
-            # LOGGER.info(
-            #     queueDB.get(user_id)["videos"], queueDB.get(m.from_user.id)["subtitles"]
-            # )
-
             if len(queueDB.get(user_id)["videos"]) == 1:
                 reply_ = await editable.edit(
-                    "**Send me some more videos to merge them into single file**",
+                    "Send more videos to merge them into a single file.",
                     reply_markup=InlineKeyboardMarkup(
                         bMaker.makebuttons(["Cancel"], ["cancel"])
                     ),
@@ -306,7 +327,7 @@ async def files_handler(c: Client, m: Message):
                     chat_id=m.chat.id, message_ids=replyDB.get(user_id)
                 )
             if len(queueDB.get(user_id)["videos"]) == 10:
-                MessageText = "Okay, Now Just Press **Merge Now** Button Plox!"
+                MessageText = "Maximum 10 videos allowed. Now press Merge Now."
             markup = await makeButtons(c, m, queueDB)
             reply_ = await editable.edit(
                 text=MessageText, reply_markup=InlineKeyboardMarkup(markup)
@@ -314,23 +335,21 @@ async def files_handler(c: Client, m: Message):
             replyDB.update({user_id: reply_.id})
         elif len(queueDB.get(user_id)["videos"]) > 10:
             markup = await makeButtons(c, m, queueDB)
-            await editable.text(
-                "Max 10 videos allowed", reply_markup=InlineKeyboardMarkup(markup)
+            await editable.edit(
+                "Maximum 10 videos allowed.",
+                reply_markup=InlineKeyboardMarkup(markup),
             )
 
     elif user.merge_mode == 2:
-        editable = await m.reply_text("Please Wait ...", quote=True)
-        MessageText = (
-            "Okay,\nNow Send Me Some More <u>Audios</u> or Press **Merge Now** Button!"
-        )
+        editable = await m.reply_text("Please wait...", quote=True)
+        MessageText = "Now send more audios or press Merge Now."
 
         if queueDB.get(user_id, None) is None:
             queueDB.update({user_id: {"videos": [], "subtitles": [], "audios": []}})
         if len(queueDB.get(user_id)["videos"]) == 0:
             queueDB.get(user_id)["videos"].append(m.id)
-            # if len(queueDB.get(user_id)["videos"])==1:
             reply_ = await editable.edit(
-                text="Now, Send all the audios you want to merge",
+                text="Now send all the audios you want to merge.",
                 reply_markup=InlineKeyboardMarkup(
                     bMaker.makebuttons(["Cancel"], ["cancel"])
                 ),
@@ -353,20 +372,19 @@ async def files_handler(c: Client, m: Message):
             )
             replyDB.update({user_id: reply_.id})
         else:
-            await m.reply("This Filetype is not valid")
+            await m.reply("This file type is not valid.")
             return
 
     elif user.merge_mode == 3:
 
-        editable = await m.reply_text("Please Wait ...", quote=True)
-        MessageText = "Okay,\nNow Send Me Some More <u>Subtitles</u> or Press **Merge Now** Button!"
+        editable = await m.reply_text("Please wait...", quote=True)
+        MessageText = "Now send more subtitles or press Merge Now."
         if queueDB.get(user_id, None) is None:
             queueDB.update({user_id: {"videos": [], "subtitles": [], "audios": []}})
         if len(queueDB.get(user_id)["videos"]) == 0:
             queueDB.get(user_id)["videos"].append(m.id)
-            # if len(queueDB.get(user_id)["videos"])==1:
             reply_ = await editable.edit(
-                text="Now, Send all the subtitles you want to merge",
+                text="Now send all the subtitles you want to merge.",
                 reply_markup=InlineKeyboardMarkup(
                     bMaker.makebuttons(["Cancel"], ["cancel"])
                 ),
@@ -389,29 +407,31 @@ async def files_handler(c: Client, m: Message):
             )
             replyDB.update({user_id: reply_.id})
         else:
-            await m.reply("This Filetype is not valid")
+            await m.reply("This file type is not valid.")
             return
 
 
 @mergeApp.on_message(filters.photo & filters.private)
 async def photo_handler(c: Client, m: Message):
     user = UserSettings(m.chat.id, m.from_user.first_name)
-    # if m.from_user.id != int(Config.OWNER):
     if not user.allowed:
-        res = await m.reply_text(
-            text=f"Hi **{m.from_user.first_name}**\n\n 🛡️ Unfortunately you can't use me\n\n**Contact: 🈲 @{Config.OWNER_USERNAME}** ",
+        await m.reply_text(
+            text=(
+                f"Hi **{m.from_user.first_name}**\n\n"
+                f"You are not allowed to use this bot.\n\n"
+                f"Contact: @{Config.OWNER_USERNAME}"
+            ),
             quote=True,
         )
         del user
         return
     thumbnail = m.photo.file_id
-    msg = await m.reply_text("Saving Thumbnail. . . .", quote=True)
+    msg = await m.reply_text("Saving thumbnail...", quote=True)
     user.thumbnail = thumbnail
     user.set()
-    # await database.saveThumb(m.from_user.id, thumbnail)
     LOCATION = f"downloads/{m.from_user.id}_thumb.jpg"
     await c.download_media(message=m, file_name=LOCATION)
-    await msg.edit_text(text="✅ Custom Thumbnail Saved!")
+    await msg.edit_text(text="Custom thumbnail saved.")
     del user
 
 
@@ -422,46 +442,79 @@ async def media_extracter(c: Client, m: Message):
         return
     if user.merge_mode == 4:
         if m.reply_to_message is None:
-            await m.reply(text="Reply /extract to a video or document file")
+            await m.reply(text="Reply /extract to a video or document file.")
             return
         rmess = m.reply_to_message
         if rmess.video or rmess.document:
             media = rmess.video or rmess.document
-            mid=rmess.id
+            mid = rmess.id
             file_name = media.file_name
             if file_name is None:
-                await m.reply("File name not found; goto @yashoswalyo")
+                await m.reply(
+                    f"File name not found. Contact @{Config.OWNER_USERNAME}."
+                )
                 return
-            markup = bMaker.makebuttons(
-                set1=["Audio", "Subtitle", "Cancel"],
-                set2=[f"extract_audio_{mid}", f"extract_subtitle_{mid}", 'cancel'],
-                isCallback=True,
-                rows=2,
-            )
+
+            # Updated extraction menu
+            markup = [
+                [
+                    InlineKeyboardButton(
+                        "📹 Video (+Subs)", callback_data=f"extract_videosub_{mid}"
+                    ),
+                    InlineKeyboardButton(
+                        "🎵 Audio", callback_data=f"extract_audio_{mid}"
+                    ),
+                    InlineKeyboardButton(
+                        "📜 Subtitle", callback_data=f"extract_subtitle_{mid}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "📂 Extract ALL (Video+Audio+Sub)",
+                        callback_data=f"extract_all_{mid}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🧹 Stream Cleaner (Remove Audio)",
+                        callback_data=f"extract_clean_{mid}",
+                    ),
+                ],
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")],
+            ]
+
             await m.reply(
-                text="Choose from below what you want to extract?",
+                text=(
+                    "**Choose extraction mode:**\n\n"
+                    "📹 Video (+Subs): Get video file with subtitles (no audio)\n"
+                    "🎵 Audio: Extract audio files only\n"
+                    "📜 Subtitle: Extract subtitle files only\n"
+                    "📂 Extract ALL: Get everything (video, audios, subs)\n"
+                    "🧹 Stream Cleaner: Select specific audio streams to keep or remove"
+                ),
                 quote=True,
                 reply_markup=InlineKeyboardMarkup(markup),
             )
     else:
         await m.reply(
-            text="Change settings and set mode to extract\nthen use /extract command"
+            text="Change settings and set mode to extract, then use /extract command."
         )
 
 
 @mergeApp.on_message(filters.command(["help"]) & filters.private)
 async def help_msg(c: Client, m: Message):
     await m.reply_text(
-        text="""**Follow These Steps:
-
-1) Send me the custom thumbnail (optional).
-2) Send two or more Your Videos Which you want to merge
-3) After sending all files select merge options
-4) Select the upload mode.
-5) Select rename if you want to give custom file name else press default**""",
+        text=(
+            "**Follow these steps:**\n\n"
+            "1) Send a custom thumbnail (optional).\n"
+            "2) Send two or more videos that you want to merge.\n"
+            "3) After sending all files select merge options.\n"
+            "4) Select the upload mode.\n"
+            "5) Select rename if you want a custom file name or press default."
+        ),
         quote=True,
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Close 🔐", callback_data="close")]]
+            [[InlineKeyboardButton("Close", callback_data="close")]]
         ),
     )
 
@@ -470,34 +523,32 @@ async def help_msg(c: Client, m: Message):
 async def about_handler(c: Client, m: Message):
     await m.reply_text(
         text="""
-**ᴡʜᴀᴛ's ɴᴇᴡ:**
-👨‍💻 ʙᴀɴ/ᴜɴʙᴀɴ ᴜsᴇʀs
-👨‍💻 ᴇxᴛʀᴀᴄᴛ ᴀʟʟ ᴀᴜᴅɪᴏs ᴀɴᴅ sᴜʙᴛɪᴛʟᴇs ғʀᴏᴍ ᴛᴇʟᴇɢʀᴀᴍ ᴍᴇᴅɪᴀ
-👨‍💻 ᴍᴇʀɢᴇ ᴠɪᴅᴇᴏ + ᴀᴜᴅɪᴏ 
-👨‍💻 ᴍᴇʀɢᴇ ᴠɪᴅᴇᴏ + sᴜʙᴛɪᴛʟᴇs
-👨‍💻 ᴜᴘʟᴏᴀᴅ ᴛᴏ ᴅʀɪᴠᴇ ᴜsɪɴɢ ʏᴏᴜʀ ᴏᴡɴ ʀᴄʟᴏɴᴇ ᴄᴏɴғɪɢ
-👨‍💻 ᴍᴇʀɢᴇᴅ ᴠɪᴅᴇᴏ ᴘʀᴇsᴇʀᴠᴇs ᴀʟʟ sᴛʀᴇᴀᴍs ᴏғ ᴛʜᴇ ғɪʀsᴛ ᴠɪᴅᴇᴏ ʏᴏᴜ sᴇɴᴅ (ɪ.ᴇ ᴀʟʟ ᴀᴜᴅɪᴏᴛʀᴀᴄᴋs/sᴜʙᴛɪᴛʟᴇs)
-➖➖➖➖➖➖➖➖➖➖➖➖➖
-**ғᴇᴀᴛᴜʀᴇs**
-🔰 ᴍᴇʀɢᴇ ᴜᴘᴛᴏ 𝟷𝟶 ᴠɪᴅᴇᴏ ɪɴ ᴏɴᴇ 
-🔰 ᴜᴘʟᴏᴀᴅ ᴀs ᴅᴏᴄᴜᴍᴇɴᴛs/ᴠɪᴅᴇᴏ
-🔰 ᴄᴜsᴛᴏᴍs ᴛʜᴜᴍʙɴᴀɪʟ sᴜᴘᴘᴏʀᴛ
-🔰 ᴜsᴇʀs ᴄᴀɴ ʟᴏɢɪɴ ᴛᴏ ʙᴏᴛ ᴜsɪɴɢ ᴘᴀssᴡᴏʀᴅ
-🔰 ᴏᴡɴᴇʀ ᴄᴀɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴜsᴇʀs
-		""",
+**Features:**
+• Ban and unban users
+• Extract all audios and subtitles from Telegram media
+• Merge video and audio
+• Merge video and subtitles
+• Upload to drive using your own rclone config
+• Merged video preserves all streams of the first video you send (all audio tracks and subtitles)
+• Merge up to 10 videos in one file
+• Upload as documents or video
+• Custom thumbnail support
+• Users can log in using a password
+• Owner can broadcast messages to all users
+        """,
         quote=True,
         reply_markup=InlineKeyboardMarkup(
             [
-                [InlineKeyboardButton("👨‍💻Developer👨‍💻", url="https://t.me/yashoswalyo")],
+                [InlineKeyboardButton("Developer", url="https://t.me/MalluPuls")],
                 [
                     InlineKeyboardButton(
-                        "🏘Source Code🏘", url="https://github.com/yashoswalyo/MERGE-BOT"
+                        "Source Code", url="https://t.me/MalluPuls"
                     ),
                     InlineKeyboardButton(
-                        "🤔Deployed By🤔", url=f"https://t.me/{Config.OWNER_USERNAME}"
+                        "Deployed By", url=f"https://t.me/{Config.OWNER_USERNAME}"
                     ),
                 ],
-                [InlineKeyboardButton("Close 🔐", callback_data="close")],
+                [InlineKeyboardButton("Close", callback_data="close")],
             ]
         ),
     )
@@ -511,9 +562,9 @@ async def save_thumbnail(c: Client, m: Message):
         if m.reply_to_message.photo:
             await photo_handler(c, m.reply_to_message)
         else:
-            await m.reply(text="Please reply to a valid photo")
+            await m.reply(text="Please reply to a valid photo.")
     else:
-        await m.reply(text="Please reply to a message")
+        await m.reply(text="Please reply to a message.")
     return
 
 
@@ -525,19 +576,19 @@ async def show_thumbnail(c: Client, m: Message):
         LOCATION = f"downloads/{str(m.from_user.id)}_thumb.jpg"
         if os.path.exists(LOCATION):
             await m.reply_photo(
-                photo=LOCATION, caption="🖼️ Your custom thumbnail", quote=True
+                photo=LOCATION, caption="Your custom thumbnail.", quote=True
             )
-        elif thumb_id is not None :
+        elif thumb_id is not None:
             await c.download_media(message=str(thumb_id), file_name=LOCATION)
             await m.reply_photo(
-                photo=LOCATION, caption="🖼️ Your custom thumbnail", quote=True
+                photo=LOCATION, caption="Your custom thumbnail.", quote=True
             )
-        else: 
-            await m.reply_text(text="❌ Custom thumbnail not found", quote=True)
+        else:
+            await m.reply_text(text="Custom thumbnail not found.", quote=True)
         del user
     except Exception as err:
         LOGGER.info(err)
-        await m.reply_text(text="❌ Custom thumbnail not found", quote=True)
+        await m.reply_text(text="Custom thumbnail not found.", quote=True)
 
 
 @mergeApp.on_message(filters.command(["deletethumbnail"]) & filters.private)
@@ -546,93 +597,132 @@ async def delete_thumbnail(c: Client, m: Message):
         user = UserSettings(m.from_user.id, m.from_user.first_name)
         user.thumbnail = None
         user.set()
-        if os.path.exists(f"downloads/{str(m.from_user.id)}"):
-            os.remove(f"downloads/{str(m.from_user.id)}")
-            await m.reply_text("✅ Deleted Sucessfully", quote=True)
+        thumb_path = f"downloads/{str(m.from_user.id)}_thumb.jpg"
+        if os.path.exists(thumb_path):
+            os.remove(thumb_path)
+            await m.reply_text("Deleted successfully.", quote=True)
             del user
-        else: raise Exception("Thumbnail file not found")
-    except Exception as err:
-        await m.reply_text(text="❌ Custom thumbnail not found", quote=True)
+        else:
+            raise Exception("Thumbnail file not found")
+    except Exception:
+        await m.reply_text(text="Custom thumbnail not found.", quote=True)
 
-@mergeApp.on_message(filters.command(["ban","unban"]) & filters.private)
-async def ban_user(c:Client,m:Message):
-    incoming=m.text.split(' ')[0]
-    if incoming == '/ban':
+
+@mergeApp.on_message(filters.command(["ban", "unban"]) & filters.private)
+async def ban_user(c: Client, m: Message):
+    incoming = m.text.split(" ")[0]
+    if incoming == "/ban":
         if m.from_user.id == int(Config.OWNER):
             try:
                 abuser_id = int(m.text.split(" ")[1])
                 if abuser_id == int(Config.OWNER):
-                    await m.reply_text("I can't ban you master,\nPlease don't abandon me. ",quote=True)
+                    await m.reply_text(
+                        "You cannot ban yourself.", quote=True
+                    )
                 else:
                     try:
                         user_obj: User = await c.get_users(abuser_id)
-                        udata  = UserSettings(uid=abuser_id,name=user_obj.first_name)
-                        udata.banned=True
-                        udata.allowed=False
+                        udata = UserSettings(
+                            uid=abuser_id, name=user_obj.first_name
+                        )
+                        udata.banned = True
+                        udata.allowed = False
                         udata.set()
-                        await m.reply_text(f"Pooof, {user_obj.first_name} has been **BANNED**",quote=True)
+                        await m.reply_text(
+                            f"{user_obj.first_name} has been banned.",
+                            quote=True,
+                        )
                         acknowledgement = f"""
 Dear {user_obj.first_name},
-I found your messages annoying and forwarded them to our team of moderators for inspection. The moderators have confirmed the report and your account is now banned.
+Your account has been banned from using this bot.
 
-While the account is banned, you will not be able to do certain things, like merging videos/audios/subtitles or extract audios from Telegram media.
+You cannot merge videos, audios, subtitles or extract streams.
 
-Your account can be released only by @{Config.OWNER_USERNAME}."""
+Your account can be unbanned only by @{Config.OWNER_USERNAME}."""
                         try:
                             await c.send_message(
-                                chat_id=abuser_id,
-                                text=acknowledgement
+                                chat_id=abuser_id, text=acknowledgement
                             )
                         except Exception as e:
-                            await m.reply_text(f"An error occured while sending acknowledgement\n\n`{e}`",quote=True)
+                            await m.reply_text(
+                                f"An error occurred while sending acknowledgement\n\n`{e}`",
+                                quote=True,
+                            )
                             LOGGER.error(e)
                     except Exception as e:
                         LOGGER.error(e)
-            except:
-                await m.reply_text("**Command:**\n  `/ban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",quote=True,parse_mode=enums.parse_mode.ParseMode.MARKDOWN)
+            except Exception:
+                await m.reply_text(
+                    "**Command:**\n  `/ban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",
+                    quote=True,
+                    parse_mode=enums.ParseMode.MARKDOWN,
+                )
         else:
-            await m.reply_text("**(Only for __OWNER__)\nCommand:**\n  `/ban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",quote=True,parse_mode=enums.parse_mode.ParseMode.MARKDOWN)
+            await m.reply_text(
+                "**(Only for OWNER)\nCommand:**\n  `/ban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",
+                quote=True,
+                parse_mode=enums.ParseMode.MARKDOWN,
+            )
         return
-    elif incoming == '/unban':
+    elif incoming == "/unban":
         if m.from_user.id == int(Config.OWNER):
             try:
                 abuser_id = int(m.text.split(" ")[1])
                 if abuser_id == int(Config.OWNER):
-                    await m.reply_text("I can't ban you master,\nPlease don't abandon me. ",quote=True)
+                    await m.reply_text(
+                        "You cannot ban yourself.", quote=True
+                    )
                 else:
                     try:
                         user_obj: User = await c.get_users(abuser_id)
-                        udata  = UserSettings(uid=abuser_id,name=user_obj.first_name)
-                        udata.banned=False
-                        udata.allowed=True
+                        udata = UserSettings(
+                            uid=abuser_id, name=user_obj.first_name
+                        )
+                        udata.banned = False
+                        udata.allowed = True
                         udata.set()
-                        await m.reply_text(f"Pooof, {user_obj.first_name} has been **UN_BANNED**",quote=True)
+                        await m.reply_text(
+                            f"{user_obj.first_name} has been unbanned.",
+                            quote=True,
+                        )
                         release_notice = f"""
-Good news {user_obj.first_name}, the ban has been uplifted on your account. You're free as a bird!"""
+Good news {user_obj.first_name}, the ban on your account has been removed."""
                         try:
                             await c.send_message(
-                                chat_id=abuser_id,
-                                text=release_notice
+                                chat_id=abuser_id, text=release_notice
                             )
                         except Exception as e:
-                            await m.reply_text(f"An error occured while sending release notice\n\n`{e}`",quote=True)
-                            LOGGER.error(e)                      
+                            await m.reply_text(
+                                f"An error occurred while sending release notice\n\n`{e}`",
+                                quote=True,
+                            )
+                            LOGGER.error(e)
                     except Exception as e:
                         LOGGER.error(e)
-            except:
-                await m.reply_text("**Command:**\n  `/unban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",quote=True,parse_mode=enums.parse_mode.ParseMode.MARKDOWN)
+            except Exception:
+                await m.reply_text(
+                    "**Command:**\n  `/unban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",
+                    quote=True,
+                    parse_mode=enums.ParseMode.MARKDOWN,
+                )
         else:
-            await m.reply_text("**(Only for __OWNER__)\nCommand:**\n  `/unban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",quote=True,parse_mode=enums.parse_mode.ParseMode.MARKDOWN)
+            await m.reply_text(
+                "**(Only for OWNER)\nCommand:**\n  `/unban <user_id>`\n\n**Usage:**\n  `user_id`: User ID of the user",
+                quote=True,
+                parse_mode=enums.ParseMode.MARKDOWN,
+            )
         return
+
+
 async def showQueue(c: Client, cb: CallbackQuery):
     try:
         markup = await makeButtons(c, cb.message, queueDB)
         await cb.message.edit(
-            text="Okay,\nNow Send Me Next Video or Press **Merge Now** Button!",
+            text="Now send the next video or press Merge Now.",
             reply_markup=InlineKeyboardMarkup(markup),
         )
     except ValueError:
-        await cb.message.edit("Send Some more videos")
+        await cb.message.edit("Send some more videos.")
     return
 
 
@@ -664,9 +754,10 @@ async def makeButtons(bot: Client, m: Message, db: dict):
                 )
 
     elif user.merge_mode == 2:
-        msgs: list[Message] = await bot.get_messages(
+        msgs = await bot.get_messages(
             chat_id=m.chat.id, message_ids=db.get(m.chat.id)["audios"]
         )
+        msgs = list(msgs)
         msgs.insert(
             0,
             await bot.get_messages(
@@ -682,15 +773,16 @@ async def makeButtons(bot: Client, m: Message, db: dict):
                     [
                         InlineKeyboardButton(
                             f"{media.file_name}",
-                            callback_data=f"tryotherbutton",
+                            callback_data="tryotherbutton",
                         )
                     ]
                 )
 
     elif user.merge_mode == 3:
-        msgs: list[Message] = await bot.get_messages(
+        msgs = await bot.get_messages(
             chat_id=m.chat.id, message_ids=db.get(m.chat.id)["subtitles"]
         )
+        msgs = list(msgs)
         msgs.insert(
             0,
             await bot.get_messages(
@@ -707,13 +799,13 @@ async def makeButtons(bot: Client, m: Message, db: dict):
                     [
                         InlineKeyboardButton(
                             f"{media.file_name}",
-                            callback_data=f"tryotherbutton",
+                            callback_data="tryotherbutton",
                         )
                     ]
                 )
 
-    markup.append([InlineKeyboardButton("🔗 Merge Now", callback_data="merge")])
-    markup.append([InlineKeyboardButton("💥 Clear Files", callback_data="cancel")])
+    markup.append([InlineKeyboardButton("Merge Now", callback_data="merge")])
+    markup.append([InlineKeyboardButton("Clear Files", callback_data="cancel")])
     return markup
 
 
@@ -721,7 +813,7 @@ LOGCHANNEL = Config.LOGCHANNEL
 try:
     if Config.USER_SESSION_STRING is None:
         raise KeyError
-    LOGGER.info("Starting USER Session")
+    LOGGER.info("Starting user session")
     userBot = Client(
         name="merge-bot-user",
         session_string=Config.USER_SESSION_STRING,
@@ -730,25 +822,26 @@ try:
 
 except KeyError:
     userBot = None
-    LOGGER.warning("No User Session, Default Bot session will be used")
+    LOGGER.warning("No user session. Default bot session will be used.")
 
 
 if __name__ == "__main__":
-    # with mergeApp:
-    #     bot:User = mergeApp.get_me()
-    #     bot_username = bot.username
-    try:
-        with userBot:
-            userBot.send_message(
-                chat_id=int(LOGCHANNEL),
-                text="Bot booted with Premium Account,\n\n  Thanks for using <a href='https://github.com/yashoswalyo/merge-bot'>this repo</a>",
-                disable_web_page_preview=True,
-            )
-            user = userBot.get_me()
-            Config.IS_PREMIUM = user.is_premium
-    except Exception as err:
-        LOGGER.error(f"{err}")
+    if userBot is not None:
+        try:
+            with userBot:
+                userBot.send_message(
+                    chat_id=int(LOGCHANNEL),
+                    text="Bot booted with premium account...",
+                    disable_web_page_preview=True,
+                )
+                user = userBot.get_me()
+                Config.IS_PREMIUM = user.is_premium
+        except Exception as err:
+            LOGGER.error(f"{err}")
+            Config.IS_PREMIUM = False
+    else:
         Config.IS_PREMIUM = False
-        pass
+
+    keep_alive()
 
     mergeApp.run()
